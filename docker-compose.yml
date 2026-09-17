@@ -1,0 +1,56 @@
+services:
+  app:
+    build: .
+    volumes:
+      - .:/var/www/html
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8004:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: billcycle
+      POSTGRES_USER: billcycle
+      POSTGRES_PASSWORD: billcycle
+    ports:
+      - "5436:5432"
+    volumes:
+      - billcycle_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+  worker:
+    build: .
+    command: php artisan queue:work --tries=1
+    volumes:
+      - .:/var/www/html
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  scheduler:
+    build: .
+    command: php artisan schedule:work
+    volumes:
+      - .:/var/www/html
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  billcycle_pgdata:
