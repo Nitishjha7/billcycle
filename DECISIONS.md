@@ -44,6 +44,23 @@ ERP demos badly).
 
 ---
 
+## 2026-09-17 — composer.lock silently drifted to PHP 8.4-only packages
+
+`composer create-project` was run inside the official `composer:2.8` Docker
+image, which bundles whatever PHP the image ships internally -- not the PHP
+8.3 the app actually runs on. The resulting `composer.lock` locked
+`symfony/clock`, `nesbot/carbon` and friends to versions requiring PHP
+>=8.4.1, which only surfaced later as a `composer install` failure inside the
+real `php:8.3-fpm` app image.
+
+Fixed by re-running `composer update` inside a container built from
+`php:8.3-cli` directly, so the lockfile is resolved against the same PHP
+version the app runs on. Lesson: **always generate `composer.lock` inside (or
+against) the exact runtime image**, never a generic tool image -- a lockfile
+that installs is not the same as a lockfile that installs on *your* PHP.
+
+---
+
 ## Entries from here are written as the code is built
 
 Things that will need an entry:
