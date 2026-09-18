@@ -26,7 +26,7 @@ for the exact algorithms.
 |---|---|---|
 | 1 — Foundation | ✅ Done | `docker compose up`, `php artisan migrate`, `php artisan test` all pass |
 | 2 — Proration engine | ✅ Core done | `ProrationCalculator` pure function, 16 tests + 1 documented `todo` |
-| 3 — Invoices & billing job | ⏳ Not started | |
+| 3 — Invoices & billing job | ✅ Done | `billing:run` is idempotent, gapless numbering, plan changes wired to the calculator |
 | 4 — Gateway & dunning | ⏳ Not started | |
 | 5 — UI & seeder | ⏳ Not started | |
 | 6 — Deploy & document | ⏳ Not started | |
@@ -176,10 +176,112 @@ calculator itself never touches).
 
 - Wiring the calculator into a real plan-change service (Phase 3 territory —
   BUILD_PLAN.md scopes the calculator itself as "no database, no UI, no
-  routes," and that boundary has been kept).
+  routes," and that boundary has been kept). **Done in Phase 3** — see below.
 - The same-day-double-change limitation stays open and documented, per the
   plan — it is meant to ship as a known, named gap, not silently fixed on
   the side.
+
+---
+
+## Phase 3 — Invoices and the billing job
+
+**Goal:** `php artisan billing:run` works and cannot double-charge.
+
+### What was built
+
+- `app/Billing/InvoiceNumberGenerator.php` — the gapless `INV-YYYY-NNNNNN`
+  scheme from [TECHNICAL_SPEC.md §7](TECHNICAL_SPEC.md#7-invoice-numbering):
+  one row per year in a new `invoice_sequences` table, read with
+  `lockForUpdate()` inside the same transaction that creates the invoice.
+  The row lock serialises allocation; the shared transaction means a
+  rollback un-allocates the number instead of leaving a gap.
+- `app/Billing/BillingRunner.php` — the core of `php artisan billing:run`.
+  Selects subscriptions that are `active`/`past_due` and due (their
+  `current_period_end` has passed), then per subscription: re-checks status
+  inside a transaction (a customer may cancel between selection and
+  processing), creates the next-period invoice and its subscription line,
+  advances the period, and commits. A second attempt at the same
+  `(subscription_id, period_start)` hits the `UNIQUE` constraint from Phase
+  1 and is counted as "already billed" rather than retried — no
+  `SELECT ... IF NOT EXISTS` race window, exactly as
+  [TECHNICAL_SPEC.md §4](TECHNICAL_SPEC.md#4-the-billing-job-and-idempotency)
+  specifies.
+- `app/Console/Commands/BillingRun.php` — the `billing:run` artisan command,
+  scheduled daily via `routes/console.php`.
+- Invoice integrity guards on the `Invoice` model: once `status` is `paid`,
+  any further save throws — except `void()`, which flips status without
+  touching amounts and never deletes the row.
+- `app/Billing/PlanChangeService.php` — wires `ProrationCalculator` into a
+  real plan change. `preview()` and `apply()` call the calculator with
+  identical inputs (same subscription, same target plan, same change date),
+  so the confirmation screen a customer sees and the invoice they actually
+  get can never disagree — see
+  [UI_FLOW.md §4](UI_FLOW.md#4-plan-change--the-proration-preview). An
+  upgrade (net positive) creates and charges an invoice *today*, covering
+  only the remainder of the current cycle; a downgrade charges nothing
+  today — no refund, credit only, per the deliberate limitation in
+  TECHNICAL_SPEC.md §3.
+- 23 new tests across `tests/Feature/BillingRunTest.php` (10, matching
+  [TEST_PLAN.md §2](TEST_PLAN.md#2-billing-job-and-idempotency--12-tests)),
+  `tests/Feature/InvoiceTest.php` (9, matching
+  [TEST_PLAN.md §5](TEST_PLAN.md#5-invoice-integrity--8-tests)), and
+  `tests/Feature/PlanChangeTest.php` (4). Full suite: 40 passed, 1 documented
+  `todo`.
+
+### Two bugs the tests caught
+
+**A silent off-by-one in the due-subscription query.** `BillingRunner`
+originally compared the due date as
+`current_period_end <= $now->toDateString()` — a full `datetime` column
+against a bare date string. `'2026-02-01 00:00:00' <= '2026-02-01'` is
+*false* lexically, so a subscription due exactly today was silently
+skipped every time; the twelve-month test caught this immediately by coming
+back with 11 invoices instead of 12. Fixed by comparing against
+`$now->endOfDay()` instead of a bare date string.
+
+**A test infrastructure bug, not a code bug, but a more consequential one.**
+`docker-compose.yml` passes `.env` into the `app` container via `env_file:`,
+so `DB_CONNECTION=pgsql` exists as a *real* process environment variable
+inside it — and PHP's `getenv()` treats a real env var as higher priority
+than `phpunit.xml`'s `<env>` block. Every `php artisan test` run had
+therefore been quietly hitting real Postgres over the network the whole
+time, not the fast in-memory SQLite the suite was written for. Nothing
+failed — the tests were still correct, just 30–70× slower than intended
+(a run that should take ~1s was taking ~25s), which is exactly the kind of
+drift that goes unnoticed because green is green. Caught by the timings
+looking wrong, not by an assertion failing. Fixed with `force="true"` on
+each `DB_*` entry in `phpunit.xml`, which tells Laravel's test bootstrap to
+win that fight. Full writeup in
+[DECISIONS.md](../DECISIONS.md#2026-09-19--real-container-env-vars-were-silently-overriding-phpunitxmls-test-database).
+
+### How to see it working
+
+```bash
+docker exec billcycle-app-1 php artisan billing:run
+docker exec billcycle-app-1 php artisan billing:run   # second run: "0 invoices, N already billed"
+docker exec billcycle-app-1 php artisan test --filter=BillingRun
+docker exec billcycle-app-1 php artisan test --filter=Invoice
+docker exec billcycle-app-1 php artisan test --filter=PlanChange
+```
+
+### Closing the loop: downgrade credit now lands on the next invoice
+
+A downgrade's credit was initially only ever recorded on `PlanChange` — real
+money the customer was owed, with nothing that actually gave it back. Closed
+by adding `plan_changes.applied_invoice_id` (nullable, set once) and having
+`BillingRunner` look up any unclaimed downgrade credit for the subscription
+(`net_paise <= 0`, `applied_invoice_id` still null) when it creates that
+subscription's next invoice, add it as a negative `proration_credit` line,
+and mark the `PlanChange` as applied so the same credit can never be carried
+onto two invoices. `lockForUpdate()` on that lookup keeps it safe if
+`billing:run` ever runs concurrently for the same subscription, same as the
+invoice-numbering lock.
+
+### What's left in Phase 3
+
+- `billing:run --dry-run` is currently a stub that prints a warning and does
+  nothing — a real preview (what *would* be billed, without writing) still
+  needs implementing.
 
 ---
 

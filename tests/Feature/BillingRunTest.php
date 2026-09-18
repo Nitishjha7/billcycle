@@ -1,7 +1,9 @@
 <?php
 
+use App\Billing\PlanChangeService;
 use App\Models\Invoice;
 use App\Models\Plan;
+use App\Models\PlanChange;
 use App\Models\Subscription;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon as CarbonFacade;
@@ -102,6 +104,57 @@ test('a crash mid run leaves no partial invoice', function () {
     expect(Invoice::where('subscription_id', $sub->id)->count())->toBe(0);
     expect($sub->fresh()->current_period_end->toDateString())
         ->toBe(CarbonImmutable::parse($originalPeriodEnd)->toDateString());
+});
+
+// --- Downgrade credit carry-forward ---------------------------------------
+
+test('a downgrade credit lands on the next regular invoice', function () {
+    $pro = Plan::factory()->create(['price_paise' => 120000]);
+    $basic = Plan::factory()->create(['price_paise' => 50000]);
+
+    $sub = Subscription::factory()->create([
+        'plan_id' => $pro->id,
+        'current_period_start' => '2026-09-01',
+        'current_period_end' => '2026-10-01',
+    ]);
+
+    app(PlanChangeService::class)->apply($sub, $basic, CarbonImmutable::parse('2026-09-16'));
+
+    $planChange = PlanChange::where('subscription_id', $sub->id)->sole();
+    expect($planChange->applied_invoice_id)->toBeNull();
+    expect($planChange->credit_paise)->toBeGreaterThan(0);
+
+    CarbonFacade::setTestNow(CarbonImmutable::parse('2026-10-01'));
+    $this->artisan('billing:run');
+
+    $invoice = $sub->invoices()->sole();
+    expect((int) $invoice->total_paise)->toBe(50000 - $planChange->credit_paise);
+    expect($invoice->lines()->where('type', 'proration_credit')->sole()->amount_paise)
+        ->toBe(-$planChange->credit_paise);
+    expect($planChange->fresh()->applied_invoice_id)->toBe($invoice->id);
+});
+
+test('a downgrade credit is never carried onto more than one invoice', function () {
+    $pro = Plan::factory()->create(['price_paise' => 120000]);
+    $basic = Plan::factory()->create(['price_paise' => 50000]);
+
+    $sub = Subscription::factory()->create([
+        'plan_id' => $pro->id,
+        'current_period_start' => '2026-09-01',
+        'current_period_end' => '2026-10-01',
+    ]);
+
+    app(PlanChangeService::class)->apply($sub, $basic, CarbonImmutable::parse('2026-09-16'));
+
+    CarbonFacade::setTestNow(CarbonImmutable::parse('2026-10-01'));
+    $this->artisan('billing:run');
+
+    CarbonFacade::setTestNow(CarbonImmutable::parse('2026-11-01'));
+    $this->artisan('billing:run');
+
+    $secondInvoice = $sub->invoices()->where('period_start', '2026-11-01')->sole();
+    expect((int) $secondInvoice->total_paise)->toBe(50000);
+    expect($secondInvoice->lines()->where('type', 'proration_credit')->count())->toBe(0);
 });
 
 // --- Selection rules ---------------------------------------------------

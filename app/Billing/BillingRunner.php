@@ -4,6 +4,7 @@ namespace App\Billing;
 
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
+use App\Models\PlanChange;
 use App\Models\Subscription;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -81,13 +82,28 @@ final class BillingRunner
                 $periodStart = CarbonImmutable::parse($subscription->current_period_end);
                 $periodEnd = $this->nextPeriodEnd($periodStart, $subscription->plan->interval);
 
+                // A downgrade applied earlier in this cycle leaves a credit
+                // that isn't owed to the customer until it lands on a real
+                // invoice -- this is that invoice. lockForUpdate() prevents
+                // the same credit being carried onto two invoices if this
+                // ever runs concurrently for the same subscription.
+                $pendingCredit = PlanChange::query()
+                    ->where('subscription_id', $subscription->id)
+                    ->where('net_paise', '<=', 0)
+                    ->whereNull('applied_invoice_id')
+                    ->lockForUpdate()
+                    ->first();
+
+                $subtotal = $subscription->plan->price_paise;
+                $total = $subtotal - ($pendingCredit?->credit_paise ?? 0);
+
                 $invoice = Invoice::create([
                     'subscription_id' => $subscription->id,
                     'number' => $this->numbers->next($now),
                     'period_start' => $periodStart,
                     'period_end' => $periodEnd,
-                    'subtotal_paise' => $subscription->plan->price_paise,
-                    'total_paise' => $subscription->plan->price_paise,
+                    'subtotal_paise' => $subtotal,
+                    'total_paise' => $total,
                     'status' => 'open',
                     'issued_at' => $now,
                 ]);
@@ -95,9 +111,20 @@ final class BillingRunner
                 InvoiceLine::create([
                     'invoice_id' => $invoice->id,
                     'description' => $subscription->plan->name,
-                    'amount_paise' => $subscription->plan->price_paise,
+                    'amount_paise' => $subtotal,
                     'type' => 'subscription',
                 ]);
+
+                if ($pendingCredit !== null) {
+                    InvoiceLine::create([
+                        'invoice_id' => $invoice->id,
+                        'description' => "Credit from plan change on {$pendingCredit->changed_at->toDateString()}",
+                        'amount_paise' => -$pendingCredit->credit_paise,
+                        'type' => 'proration_credit',
+                    ]);
+
+                    $pendingCredit->update(['applied_invoice_id' => $invoice->id]);
+                }
 
                 $subscription->update([
                     'current_period_start' => $periodStart,

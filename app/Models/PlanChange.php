@@ -19,6 +19,7 @@ class PlanChange extends Model
         'credit_paise',
         'charge_paise',
         'net_paise',
+        'applied_invoice_id',
     ];
 
     protected function casts(): array
@@ -44,5 +45,10 @@ class PlanChange extends Model
     public function toPlan(): BelongsTo
     {
         return $this->belongsTo(Plan::class, 'to_plan_id');
+    }
+
+    public function appliedInvoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class, 'applied_invoice_id');
     }
 }
