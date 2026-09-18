@@ -165,8 +165,8 @@ adjusted, and the invoice that was actually sent would no longer be reproducible
 
 ```php
 ProrationCalculator::calculate(
-    Plan $oldPlan,
-    Plan $newPlan,
+    PlanPricing $oldPlan,
+    PlanPricing $newPlan,
     CarbonImmutable $changeDate,
     CarbonImmutable $cycleStart,
     CarbonImmutable $cycleEnd,
@@ -176,6 +176,16 @@ ProrationCalculator::calculate(
 Pure function. No database access, no `now()`, no side effects. The change date is
 passed in rather than read from the clock, so the function is trivially testable
 and the caller owns the timing decision.
+
+**Takes `PlanPricing`, not the Eloquent `Plan` model, as originally sketched
+here.** `Plan` implements the interface for production use, but an Eloquent
+model requires a database connection resolver even when it is never queried —
+so a calculator signature typed to `Plan` would make "no database" a promise
+the *test suite* could quietly break, not just the implementation. Tests use a
+plain `PlanSnapshot` DTO that implements the same interface. Same-plan
+rejection compares plan identity (persisted primary key, or object identity
+for two in-memory instances), not price, so two distinct plans that happen to
+share a price are never mistaken for a no-op change.
 
 **Steps:**
 
@@ -198,7 +208,7 @@ make the February daily rate wrong by 7%.
 | **Change on cycle start day** | `remainingDays == totalDays`, full credit and full charge | Degenerates correctly; no special case needed |
 | **Change on cycle end day** | `remainingDays == 0`, both zero, net zero | Must not divide by zero or emit a Rs 0.00 line |
 | **Same-day second change** | Second change prorates from the *same* change date | Two changes in one day must not double-credit. **This is the known weak spot — see [INTERVIEW_NOTES.md](INTERVIEW_NOTES.md).** |
-| **Change during trial** | No proration; plan swaps, trial end unchanged | Nothing has been paid, so there is nothing to prorate |
+| **Change during trial** | No proration; plan swaps, trial end unchanged | Nothing has been paid, so there is nothing to prorate. **This is a caller-level rule, not calculator behaviour** — the calculator has no notion of trial state, so the subscription service must simply not call it while trialing. |
 | **Same plan to same plan** | Rejected before calculation | Not an error state, just a no-op the UI should not offer |
 
 ### Where it is called

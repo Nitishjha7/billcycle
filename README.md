@@ -104,6 +104,7 @@ it rounds is a documented decision, not an accident of the language.
 
 | Doc | What is in it |
 |---|---|
+| [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) | What has actually been built so far, phase by phase, in plain language |
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Schema, proration algorithm, dunning state machine, idempotency design |
 | [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) | Six phases, in build order, with what "done" means for each |
 | [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Every test to write, grouped, with the edge cases spelled out |
