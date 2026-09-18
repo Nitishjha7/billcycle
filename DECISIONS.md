@@ -61,6 +61,31 @@ that installs is not the same as a lockfile that installs on *your* PHP.
 
 ---
 
+## 2026-09-19 — Real container env vars were silently overriding phpunit.xml's test database
+
+`docker-compose.yml` passes `.env` to the `app` container via `env_file:`, so
+`DB_CONNECTION=pgsql` exists as a real process environment variable inside
+it. PHP's `getenv()`/`$_ENV` treat a real environment variable as
+higher-priority than `phpunit.xml`'s `<env>` block, so every `php artisan
+test` run was quietly hitting real Postgres over the network instead of the
+fast in-memory SQLite the test suite was written for. The tests still
+passed, just ~30-70x slower than they should have been (a Feature test
+suite of ~30s instead of ~1s) -- nothing failed loudly, which is exactly why
+this kind of drift is dangerous.
+
+Fixed by adding `force="true"` to each of the `DB_*` `<env>` entries in
+`phpunit.xml`, which tells Laravel's test bootstrapping to override the real
+environment variable rather than defer to it. Confirmed by the SmokeTest's
+duration dropping from ~22s to ~0.3s once fixed -- a proxy for "is this
+suite actually hitting SQLite," not just "does it pass."
+
+**Lesson:** a green test suite is not proof it is testing what you think it
+is testing. When Docker Compose injects the same env vars into both the dev
+container and the test run, they need to disagree somewhere, and
+`phpunit.xml`'s `force="true"` is that seam for Laravel specifically.
+
+---
+
 ## Entries from here are written as the code is built
 
 Things that will need an entry:
