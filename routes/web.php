@@ -22,4 +22,5 @@ Route::middleware('auth')->group(function () {
     Route::post('/customers/{customer}/change-plan', [PlanChangeController::class, 'apply'])->name('plan-change.apply');
 
     Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
+    Route::get('/invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('invoices.pdf');
 });

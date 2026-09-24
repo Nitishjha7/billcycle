@@ -11,9 +11,14 @@
                 {{ $invoice->subscription->customer->name }} &middot; {{ $invoice->issued_at->format('d M Y') }}
             </p>
         </div>
-        <a href="{{ route('customers.show', $invoice->subscription->customer) }}" class="text-sm text-gray-600 hover:underline">
-            &larr; Back to customer
-        </a>
+        <div class="flex items-center gap-4">
+            <a href="{{ route('invoices.pdf', $invoice) }}" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50">
+                Download PDF
+            </a>
+            <a href="{{ route('customers.show', $invoice->subscription->customer) }}" class="text-sm text-gray-600 hover:underline">
+                &larr; Back to customer
+            </a>
+        </div>
     </div>
 
     <table class="mt-4 w-full text-sm">

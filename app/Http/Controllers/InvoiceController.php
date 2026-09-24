@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Invoice;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 /**
@@ -19,5 +21,13 @@ class InvoiceController extends Controller
         return view('invoices.show', [
             'invoice' => $invoice,
         ]);
+    }
+
+    public function pdf(Invoice $invoice): Response
+    {
+        $invoice->load(['lines', 'subscription.customer', 'payments']);
+
+        return Pdf::loadView('invoices.pdf', ['invoice' => $invoice])
+            ->download("{$invoice->number}.pdf");
     }
 }
