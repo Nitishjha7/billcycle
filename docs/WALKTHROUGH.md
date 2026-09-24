@@ -28,7 +28,7 @@ for the exact algorithms.
 | 2 — Proration engine | ✅ Core done | `ProrationCalculator` pure function, 16 tests + 1 documented `todo` |
 | 3 — Invoices & billing job | ✅ Done | `billing:run` is idempotent, gapless numbering, plan changes wired to the calculator |
 | 4 — Gateway & dunning | ✅ Done | Fake gateway, retry schedule, state machine, 500-event chaos test |
-| 5 — UI & seeder | ⏳ Not started | |
+| 5 — UI & seeder | ✅ Done | Five screens, login, DemoSeeder with real 8-month history |
 | 6 — Deploy & document | ⏳ Not started | |
 
 ---
@@ -357,6 +357,104 @@ docker exec billcycle-app-1 php artisan test --filter=Chaos
 
 - Nothing scoped by BUILD_PLAN.md remains open. `billing:run --dry-run`
   (noted under Phase 3) is the one stub still outstanding project-wide.
+
+---
+
+## Phase 5 — UI and seeder
+
+**Goal:** the demo in [DEMO_SCRIPT.md](DEMO_SCRIPT.md) can be performed end
+to end.
+
+### What was built
+
+- All five screens from
+  [UI_FLOW.md](UI_FLOW.md#the-five-screens): dashboard (`/`), customer list
+  (`/customers`), customer detail with the dunning timeline
+  (`/customers/{id}`), the plan-change proration preview
+  (`/customers/{id}/change-plan`), and invoice detail (`/invoices/{id}`).
+  Blade + Tailwind, server-rendered, Tailwind defaults only — no custom
+  design system, per the doc's own design rule.
+- A minimal login (`/login`), added even though UI_FLOW.md's five screens
+  don't include one — [SETUP.md](SETUP.md) promises a demo login
+  (`admin@billcycle.demo` / `password`), and this is the smallest thing that
+  makes that true without adding scope beyond it: one seeded admin user, no
+  registration, no password reset.
+- The dashboard's "recent activity" feed is assembled by merging and
+  sorting rows from `invoices`, `payment_attempts`, `plan_changes` and
+  `subscriptions` — there is no dedicated activity-log table, because the
+  schema is deliberately fixed at eight tables
+  ([TECHNICAL_SPEC.md §2](TECHNICAL_SPEC.md#2-schema)).
+- The plan-change screen's controller calls `PlanChangeService::preview()`
+  and `apply()` with identical inputs for the same request, which is what
+  makes the confirmation box and the real charge structurally unable to
+  disagree — the same guarantee the pure `ProrationCalculator` gives at the
+  unit level now holds at the HTTP level too.
+- `database/seeders/DemoSeeder.php` — the single most important piece of
+  demo infrastructure in the project, per UI_FLOW.md's own words. It does
+  **not** fabricate rows: it drives the real `BillingRunner`,
+  `PlanChangeService` and `DunningRetryRunner` forward through eight
+  simulated months for 50 customers, the same engines the test suite
+  exercises. That is what makes the seeded invoice numbers genuinely
+  sequential and gapless (verified: 379 invoices numbered 1–379, no gaps)
+  and every amount a real system output — including a real
+  `Rs 967.75` proration credit line from an actual simulated plan change,
+  not a hand-picked "looks realistic" number.
+- Three subscriptions are deliberately reserved and driven individually so
+  every status UI_FLOW.md asks for actually appears in the seed:
+  `deepInDunning` (3 failed attempts, ends suspended — the dunning timeline
+  screen's reason for existing), `recovered` (fails twice, then pays, back
+  to active — proves the reset path), and `stuckInRetry` (fails once on the
+  very last simulated month and is deliberately left mid-schedule, so
+  `past_due` — a real status — isn't just theoretically possible but
+  actually present in the data).
+- A multi-stage `Dockerfile`: a `node:20-alpine` stage runs `npm install`
+  and `vite build`, and only `public/build` is copied into the PHP image —
+  so `docker compose up --build` produces working CSS/JS without a manual
+  host-side `npm run build` step.
+
+### Two infrastructure bugs, not logic bugs
+
+**The container silently couldn't write anywhere in `storage/`.** The
+Dockerfile's `chown -R www-data:www-data storage bootstrap/cache` ran at
+*build* time, but `docker-compose.yml`'s bind mount (`.:/var/www/html`)
+replaces the image's baked-in ownership with the host filesystem's ownership
+the moment the container actually *starts*. PHP-FPM runs as `www-data`, so
+every request that touched a session, a compiled view, or a log file failed
+with a bare `tempnam(): file created in the system's temporary directory`
+500 — no stack trace, nothing useful in `laravel.log`, because the failure
+happened before Laravel's own error handling could engage. Fixed with
+`docker/entrypoint.sh`, which re-applies the `chown` on every container
+*start*, not just at build time.
+
+**The seeder's first attempt produced zero failed payments at all,** which
+meant `past_due` and `suspended` never appeared no matter how "unhealthy"
+the configured share was. Cause: `BillingRunner` dispatches a subscription's
+*first* payment attempt itself, immediately after that subscription's
+invoice commits, still inside the same `billing:run` call. The seeder was
+arming `FakeGateway` to fail *after* calling `billing:run` for the batch —
+by then, every invoice's first attempt had already happened and already
+succeeded. Fixed by billing each intentionally-failing subscription through
+its own isolated `billing:run` call, with the gateway pre-armed to fail
+before that specific call, rather than batching everyone through one call
+with the gateway configured afterward.
+
+### How to see it working
+
+```bash
+docker compose up -d --build
+docker exec billcycle-app-1 php artisan migrate --force
+docker exec billcycle-app-1 php artisan db:seed --force
+```
+
+Then visit `http://localhost:8004/login` and sign in as
+`admin@billcycle.demo` / `password`.
+
+### What's left in Phase 5
+
+- Nothing scoped by BUILD_PLAN.md remains open for the UI or seeder
+  themselves. PDF invoice generation (listed under Phase 5 in
+  BUILD_PLAN.md) has not been built yet — the invoice detail screen renders
+  in-browser only, with no "Download PDF" action wired up.
 
 ---
 
