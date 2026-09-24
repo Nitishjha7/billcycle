@@ -62,7 +62,7 @@ php artisan billing:run --dry-run    # show what would be billed
 
 # Demo data
 php artisan db:seed --class=DemoSeeder
-php artisan db:seed --class=DemoSeeder --profile=messy   # more unhealthy accounts
+SEED_PROFILE=messy php artisan db:seed --class=DemoSeeder   # more unhealthy accounts
 
 # Tests
 php artisan test
