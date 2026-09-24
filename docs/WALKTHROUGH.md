@@ -451,10 +451,10 @@ Then visit `http://localhost:8004/login` and sign in as
 
 ### What's left in Phase 5
 
-- Nothing scoped by BUILD_PLAN.md remains open for the UI or seeder
-  themselves. PDF invoice generation (listed under Phase 5 in
-  BUILD_PLAN.md) has not been built yet — the invoice detail screen renders
-  in-browser only, with no "Download PDF" action wired up.
+- Nothing. PDF invoice generation (`barryvdh/laravel-dompdf`, a plain-HTML
+  template separate from the Tailwind one since dompdf's CSS support is
+  limited) closed the one remaining BUILD_PLAN.md checklist item — every
+  Phase 5 item is now done.
 
 ---
 
