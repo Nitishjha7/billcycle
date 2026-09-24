@@ -86,6 +86,35 @@ container and the test run, they need to disagree somewhere, and
 
 ---
 
+## 2026-09-24 — Suspended subscriptions need retries with no scheduled next_retry_at
+
+The dunning retry schedule (TECHNICAL_SPEC.md §5) ends at attempt 4: on
+failure, `next_retry_at` is left `null` and the subscription is suspended.
+That's correct for the schedule itself, but it left `DunningRetryRunner`
+with no way to ever pick a suspended subscription's invoice back up --
+querying only "attempts with a due `next_retry_at`" means a suspended
+subscription's last attempt has none, so it can never be found again.
+
+Fixed by having the retry runner also pick up every `open` invoice
+belonging to a `suspended` subscription, every run, regardless of
+`next_retry_at`. Rejected: a separate "customer requests reactivation"
+endpoint as the only path in — more realistic for a real gateway (which
+would reactivate via webhook after a card update), but out of scope for a
+project with no real payment UI yet, and the spec's own words ("a single
+successful payment" can revive it) don't require anything more specific
+than "the system keeps trying."
+
+## 2026-09-24 — Same bug shape as before: diffInDays returns a float
+
+`$attempt->attempted_at->diffInDays($attempt->next_retry_at)` returned
+`1.0`, not `1`, so `toBe(1)` failed under Pest's strict comparison -- the
+exact same trap as the proration test suite in Phase 2. Cast to `(int)` at
+the assertion site. Worth a general habit note: any `Carbon::diffIn*()`
+result being compared with `toBe()` (not `toEqual()`) needs an explicit
+cast, in this codebase specifically.
+
+---
+
 ## Entries from here are written as the code is built
 
 Things that will need an entry:

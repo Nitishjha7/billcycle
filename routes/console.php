@@ -12,3 +12,8 @@ Artisan::command('inspire', function () {
 // demos, run `php artisan billing:run` by hand instead -- that's the point
 // of the idempotency moment in docs/DEMO_SCRIPT.md.
 Schedule::command('billing:run')->daily();
+
+// Retry intervals are +1/+3/+5 days, not daily, but checking hourly for
+// invoices whose next_retry_at has passed is what makes those exact
+// intervals land on time without a bespoke per-invoice scheduled job.
+Schedule::command('dunning:retry')->hourly();

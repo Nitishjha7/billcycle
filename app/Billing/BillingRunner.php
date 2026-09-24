@@ -25,6 +25,7 @@ final class BillingRunner
 {
     public function __construct(
         private readonly InvoiceNumberGenerator $numbers,
+        private readonly DunningService $dunning,
     ) {}
 
     /**
@@ -47,13 +48,20 @@ final class BillingRunner
             ->get();
 
         foreach ($due as $subscription) {
-            $result = $this->billOne($subscription, $now);
+            [$result, $invoice] = $this->billOne($subscription, $now);
 
             match ($result) {
                 'billed' => $billed++,
                 'already_billed' => $alreadyBilled++,
                 'skipped' => $skipped++,
             };
+
+            // The payment attempt happens after the billing transaction has
+            // committed, not nested inside it -- a gateway failure must
+            // never roll back the invoice that was just correctly created.
+            if ($result === 'billed' && $invoice !== null) {
+                $this->dunning->attempt($invoice, $now);
+            }
         }
 
         return [
@@ -64,19 +72,19 @@ final class BillingRunner
     }
 
     /**
-     * @return 'billed'|'already_billed'|'skipped'
+     * @return array{0: 'billed'|'already_billed'|'skipped', 1: ?Invoice}
      */
-    private function billOne(Subscription $subscription, CarbonImmutable $now): string
+    private function billOne(Subscription $subscription, CarbonImmutable $now): array
     {
         try {
-            return DB::transaction(function () use ($subscription, $now) {
+            $invoice = DB::transaction(function () use ($subscription, $now) {
                 // Re-check status inside the transaction: a customer may
                 // have cancelled or been suspended between the selection
                 // query above and this row being processed.
                 $subscription->refresh();
 
                 if (! in_array($subscription->status, ['active', 'past_due'], true)) {
-                    return 'skipped';
+                    return null;
                 }
 
                 $periodStart = CarbonImmutable::parse($subscription->current_period_end);
@@ -131,13 +139,13 @@ final class BillingRunner
                     'current_period_end' => $periodEnd,
                 ]);
 
-                // Payment attempt dispatch (Phase 4) hooks in here.
-
-                return 'billed';
+                return $invoice;
             });
+
+            return $invoice === null ? ['skipped', null] : ['billed', $invoice];
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
-                return 'already_billed';
+                return ['already_billed', null];
             }
 
             throw $e;
