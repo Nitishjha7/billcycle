@@ -29,9 +29,15 @@ final class BillingRunner
     ) {}
 
     /**
+     * @param  list<string>  $excludeSubscriptionIds  skip these subscriptions
+     *         even if otherwise due. Only used by DemoSeeder to bill a
+     *         controlled slice of subscriptions per call, so a gateway
+     *         forced to fail can be armed for exactly one subscription's
+     *         first attempt without affecting the rest of the batch.
+     * @param  ?string  $onlySubscriptionId  bill only this subscription, if due
      * @return array{billed: int, already_billed: int, skipped: int}
      */
-    public function run(CarbonImmutable $now): array
+    public function run(CarbonImmutable $now, array $excludeSubscriptionIds = [], ?string $onlySubscriptionId = null): array
     {
         $billed = 0;
         $alreadyBilled = 0;
@@ -45,6 +51,8 @@ final class BillingRunner
             // silently skipped everything due *today*. Compare against the
             // end of today instead, so "today or past" means what it says.
             ->where('current_period_end', '<=', $now->endOfDay())
+            ->when($onlySubscriptionId !== null, fn ($query) => $query->where('id', $onlySubscriptionId))
+            ->when($excludeSubscriptionIds !== [], fn ($query) => $query->whereNotIn('id', $excludeSubscriptionIds))
             ->get();
 
         foreach ($due as $subscription) {
