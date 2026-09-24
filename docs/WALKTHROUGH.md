@@ -27,7 +27,7 @@ for the exact algorithms.
 | 1 — Foundation | ✅ Done | `docker compose up`, `php artisan migrate`, `php artisan test` all pass |
 | 2 — Proration engine | ✅ Core done | `ProrationCalculator` pure function, 16 tests + 1 documented `todo` |
 | 3 — Invoices & billing job | ✅ Done | `billing:run` is idempotent, gapless numbering, plan changes wired to the calculator |
-| 4 — Gateway & dunning | ⏳ Not started | |
+| 4 — Gateway & dunning | ✅ Done | Fake gateway, retry schedule, state machine, 500-event chaos test |
 | 5 — UI & seeder | ⏳ Not started | |
 | 6 — Deploy & document | ⏳ Not started | |
 
@@ -282,6 +282,81 @@ invoice-numbering lock.
 - `billing:run --dry-run` is currently a stub that prints a warning and does
   nothing — a real preview (what *would* be billed, without writing) still
   needs implementing.
+
+---
+
+## Phase 4 — Gateway and dunning
+
+**Goal:** a failed payment walks the full retry schedule and suspends; a
+later payment can bring it back.
+
+### What was built
+
+- `app/Billing/PaymentGateway.php`, `GatewayResult.php` — the seam a real
+  gateway would slot into. Two implementations, per
+  [TECHNICAL_SPEC.md §6](TECHNICAL_SPEC.md#6-the-fake-payment-gateway):
+  `NullGateway` (always succeeds) and `FakeGateway` (outcome entirely
+  configuration-driven — `alwaysFails()`, `failReference()`,
+  `failNextAttempts()`, keyed by charge reference so independent invoices in
+  the same test don't interfere with each other).
+- `app/Billing/SubscriptionStateMachine.php` — the dunning transitions as an
+  explicit allow-list (`active → past_due → suspended → active`, plus
+  `cancelled` from anywhere still active). Anything not on the list throws
+  `LogicException` rather than silently no-opping — "illegal transitions
+  throw," per the spec, not "illegal transitions are avoided by convention."
+- `app/Billing/DunningService.php` — attempts a single invoice's payment.
+  Success: records the `Payment`, marks the invoice `paid`, resets the
+  subscription to `active`; if it had been suspended, restarts the period
+  from the payment date rather than billing for the suspended days (the
+  policy decision TECHNICAL_SPEC.md §5 answers explicitly). Failure: records
+  the `PaymentAttempt` with its failure code, schedules the next retry at
+  +1/+3/+5 days, and moves the subscription to `past_due` — or `suspended`
+  once attempt 4 also fails.
+- `app/Billing/DunningRetryRunner.php` (`php artisan dunning:retry`,
+  scheduled hourly) — finds invoices due for another attempt. Two cases:
+  a scheduled retry whose `next_retry_at` has passed, and every open invoice
+  belonging to a currently-`suspended` subscription (see the bug note
+  below for why the second case exists at all).
+- `BillingRunner` now dispatches the first payment attempt right after its
+  own transaction commits, deliberately not nested inside it — a gateway
+  failure must never roll back the invoice that was just correctly created.
+- `tests/Feature/DunningTest.php` — 11 tests from
+  [TEST_PLAN.md §3](TEST_PLAN.md#3-dunning--15-tests): the four-failures-to-
+  suspended headline test, recovery at every stage, the state machine's
+  illegal-transition guard, the exact retry intervals, and both failure
+  codes following the same schedule.
+- `tests/Feature/ChaosTest.php` — the highest-value test in the project.
+  500 random events (`upgrade`, `downgrade`, `cancel`, `pay`, `fail_payment`,
+  `advance_clock`) fired at 20 customers in a seeded random sequence, then
+  one assertion per customer: `invoicedTotalPaise() - paidTotalPaise() ==
+  outstandingPaise()`. It passed on the first real run. Backing it,
+  `Customer::invoicedTotalPaise()` / `paidTotalPaise()` / `outstandingPaise()`
+  were added as the three ledger queries the invariant is built from.
+
+### A real gap the retry schedule left open
+
+The retry schedule ends at attempt 4 with `next_retry_at` left `null` — by
+design, there's nothing more scheduled. But that meant `DunningRetryRunner`,
+querying only "attempts with a due `next_retry_at`," could **never find a
+suspended subscription's invoice again** — nothing was ever going to make
+`next_retry_at` non-null after suspension. That directly contradicts
+TECHNICAL_SPEC.md §5's own rule: "suspension is not cancellation... can be
+revived by a single successful payment." Fixed by having the retry runner
+also pick up every open invoice of a suspended subscription on every run,
+regardless of `next_retry_at`. Full reasoning in
+[DECISIONS.md](../DECISIONS.md#2026-09-24--suspended-subscriptions-need-retries-with-no-scheduled-next_retry_at).
+
+### How to see it working
+
+```bash
+docker exec billcycle-app-1 php artisan test --filter=Dunning
+docker exec billcycle-app-1 php artisan test --filter=Chaos
+```
+
+### What's left in Phase 4
+
+- Nothing scoped by BUILD_PLAN.md remains open. `billing:run --dry-run`
+  (noted under Phase 3) is the one stub still outstanding project-wide.
 
 ---
 
