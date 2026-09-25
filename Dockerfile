@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y \
         unzip \
         libpq-dev \
         libzip-dev \
+        nginx \
+        supervisor \
     && docker-php-ext-install pdo pdo_pgsql pgsql zip bcmath \
     && rm -rf /var/lib/apt/lists/*
 
@@ -33,8 +35,14 @@ RUN composer install --no-interaction --prefer-dist --no-scripts \
 
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
+# Used only when this image runs as the "web" role (Railway's web service,
+# or docker-compose's nginx+app split locally). worker/scheduler override
+# CMD with their own artisan command and never touch nginx or supervisor.
+COPY docker/nginx/web.conf /etc/nginx/sites-enabled/default
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["entrypoint.sh"]
-CMD ["php-fpm"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

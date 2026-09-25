@@ -1,6 +1,11 @@
 services:
   app:
     build: .
+    # The image's own default CMD runs nginx + php-fpm together via
+    # supervisord (that's what Railway's single "web" service uses).
+    # Locally, the separate nginx service below already handles HTTP, so
+    # this container only needs to run php-fpm.
+    command: php-fpm
     volumes:
       - .:/var/www/html
     env_file: .env
