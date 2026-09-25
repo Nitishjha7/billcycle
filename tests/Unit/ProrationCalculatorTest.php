@@ -6,7 +6,7 @@ use Carbon\CarbonImmutable;
 
 /**
  * Pure input to output. No database, no clock -- these run in milliseconds.
- * See docs/TECHNICAL_SPEC.md #3 and docs/TEST_PLAN.md #1.
+ * See docs/TECHNICAL_SPEC.md #3.
  */
 function plan(int $pricePaise): PlanSnapshot
 {
@@ -255,4 +255,4 @@ test('two plan changes on the same day do not double credit', function () {
     // Basic -> Pro -> Enterprise, all on the 15th.
     // The second change must prorate from the 15th, not re-credit
     // the full remaining period of a plan already credited once.
-})->todo('Known limitation - see INTERVIEW_NOTES.md section on limitations');
+})->todo('Known limitation: a second same-day change re-credits the full remaining period instead of accounting for the first change.');

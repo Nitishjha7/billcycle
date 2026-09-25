@@ -8,9 +8,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// The scheduler container runs `schedule:work`, which fires this daily. For
-// demos, run `php artisan billing:run` by hand instead -- that's the point
-// of the idempotency moment in docs/DEMO_SCRIPT.md.
+// The scheduler container runs `schedule:work`, which fires this daily.
+// Running it by hand instead shows the idempotency guarantee directly:
+// run it twice and the second run bills nothing.
 Schedule::command('billing:run')->daily();
 
 // Retry intervals are +1/+3/+5 days, not daily, but checking hourly for

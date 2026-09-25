@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
  * php artisan billing:run. For each subscription whose current_period_end is
  * today or past, and whose status is active or past_due: create the invoice
  * for the next period, add the subscription line, advance the period, and
- * dispatch a payment attempt. See docs/TECHNICAL_SPEC.md #4.
+ * attempt the first payment. See docs/TECHNICAL_SPEC.md #4.
  *
  * Idempotent by construction: UNIQUE (subscription_id, period_start) on
  * invoices means a second attempt at the same insert is rejected by the

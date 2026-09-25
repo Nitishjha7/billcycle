@@ -11,8 +11,7 @@ use InvalidArgumentException;
  * testable and the caller owns the timing decision.
  *
  * Takes PlanPricing rather than the Eloquent Plan model directly, so this
- * class and its test suite never touch a database connection -- see
- * docs/BUILD_PLAN.md Phase 2: "No database. No UI. No routes."
+ * class and its test suite never touch a database connection.
  *
  * Called twice for a single plan change -- once from the preview endpoint,
  * once from the apply path inside a transaction -- and both calls must

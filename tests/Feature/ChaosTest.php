@@ -12,12 +12,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon as CarbonFacade;
 
 /**
- * The highest-value test in the suite: 500 random events against 20
- * customers, asserting one invariant that must hold no matter what --
- * invoiced minus paid equals outstanding, for every customer, every time.
- * See docs/TEST_PLAN.md #4.
- *
- * Seeded so a failure is reproducible.
+ * 500 random events against 20 customers, asserting one invariant that must
+ * hold no matter what: invoiced minus paid equals outstanding, for every
+ * customer, every time. Seeded so a failure is reproducible.
  */
 test('customer balances stay consistent under 500 random events', function () {
     mt_srand(42);

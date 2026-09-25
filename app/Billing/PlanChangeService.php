@@ -66,10 +66,9 @@ final class PlanChangeService
                 $this->chargeToday($subscription, $oldPlan, $newPlan, $changeDate, $result);
             }
             // Downgrade (net <= 0): no refund, no invoice today. The credit
-            // is a deliberate limitation carried forward only in the
-            // PlanChange record for now -- attaching it to the next regular
-            // invoice is billing:run's job (Phase 3 follow-up), not this
-            // service's, since that invoice does not exist yet.
+            // is recorded on the PlanChange row and picked up by
+            // BillingRunner when it creates the subscription's next
+            // invoice, since that invoice doesn't exist yet.
 
             $subscription->update(['plan_id' => $newPlan->id]);
 

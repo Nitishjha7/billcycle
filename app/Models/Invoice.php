@@ -75,7 +75,7 @@ class Invoice extends Model
 
     /**
      * Voiding does not delete the invoice -- the record stays, only its
-     * status changes. See docs/TEST_PLAN.md #5.
+     * status changes.
      */
     public function void(): void
     {

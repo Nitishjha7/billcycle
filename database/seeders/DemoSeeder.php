@@ -18,13 +18,11 @@ use Illuminate\Support\Carbon;
  * php artisan db:seed --class=DemoSeeder
  * SEED_PROFILE=messy php artisan db:seed --class=DemoSeeder
  *
- * The single most important piece of demo infrastructure in the project --
- * see docs/UI_FLOW.md's seed data specification. Deliberately drives the
- * real BillingRunner / PlanChangeService / DunningRetryRunner forward
- * through eight simulated months rather than fabricating rows directly:
- * that is what makes invoice numbers genuinely sequential and gapless, and
- * every amount an actual system output rather than a plausible-looking
- * guess.
+ * See docs/UI_FLOW.md's seed data specification. Drives the real
+ * BillingRunner / PlanChangeService / DunningRetryRunner forward through
+ * eight simulated months rather than fabricating rows directly, so invoice
+ * numbers come out genuinely sequential and gapless and every amount is a
+ * real system output rather than a plausible-looking guess.
  */
 class DemoSeeder extends Seeder
 {
