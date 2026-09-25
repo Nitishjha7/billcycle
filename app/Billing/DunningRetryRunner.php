@@ -5,6 +5,7 @@ namespace App\Billing;
 use App\Models\Invoice;
 use App\Models\PaymentAttempt;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 
 /**
  * Finds invoices due for another payment attempt and re-attempts them via
@@ -48,7 +49,7 @@ final class DunningRetryRunner
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, string>
+     * @return Collection<int, string>
      */
     private function invoicesWithADueScheduledRetry(CarbonImmutable $now)
     {
@@ -74,7 +75,7 @@ final class DunningRetryRunner
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, string>
+     * @return Collection<int, string>
      */
     private function openInvoicesOfSuspendedSubscriptions()
     {

@@ -2,6 +2,7 @@
 
 use App\Billing\FakeGateway;
 use App\Billing\PaymentGateway;
+use App\Billing\SubscriptionStateMachine;
 use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\Subscription;
@@ -173,7 +174,7 @@ test('reactivation restarts the period from the payment date', function () {
 test('illegal transition throws', function () {
     $sub = Subscription::factory()->suspended()->create();
 
-    expect(fn () => App\Billing\SubscriptionStateMachine::transition($sub, 'past_due'))
+    expect(fn () => SubscriptionStateMachine::transition($sub, 'past_due'))
         ->toThrow(LogicException::class);
 });
 

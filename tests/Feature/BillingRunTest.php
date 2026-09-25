@@ -6,7 +6,9 @@ use App\Models\Plan;
 use App\Models\PlanChange;
 use App\Models\Subscription;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon as CarbonFacade;
+use Illuminate\Support\Facades\DB;
 
 afterEach(function () {
     CarbonFacade::setTestNow();
@@ -66,7 +68,7 @@ test('the unique constraint is what stops it, not application code', function ()
 
     $existing = $sub->invoices()->first();
 
-    expect(fn () => \App\Models\Invoice::create([
+    expect(fn () => Invoice::create([
         'subscription_id' => $sub->id,
         'number' => 'INV-2099-999999',
         'period_start' => $existing->period_start,
@@ -75,7 +77,7 @@ test('the unique constraint is what stops it, not application code', function ()
         'total_paise' => 1,
         'status' => 'open',
         'issued_at' => now(),
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });
 
 test('a crash mid run leaves no partial invoice', function () {
@@ -83,8 +85,8 @@ test('a crash mid run leaves no partial invoice', function () {
     $originalPeriodEnd = $sub->current_period_end;
 
     try {
-        \Illuminate\Support\Facades\DB::transaction(function () use ($sub) {
-            \App\Models\Invoice::create([
+        DB::transaction(function () use ($sub) {
+            Invoice::create([
                 'subscription_id' => $sub->id,
                 'number' => 'INV-2026-000001',
                 'period_start' => $sub->current_period_end,

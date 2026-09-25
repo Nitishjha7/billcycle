@@ -30,10 +30,10 @@ final class BillingRunner
 
     /**
      * @param  list<string>  $excludeSubscriptionIds  skip these subscriptions
-     *         even if otherwise due. Only used by DemoSeeder to bill a
-     *         controlled slice of subscriptions per call, so a gateway
-     *         forced to fail can be armed for exactly one subscription's
-     *         first attempt without affecting the rest of the batch.
+     *                                                even if otherwise due. Only used by DemoSeeder to bill a
+     *                                                controlled slice of subscriptions per call, so a gateway
+     *                                                forced to fail can be armed for exactly one subscription's
+     *                                                first attempt without affecting the rest of the batch.
      * @param  ?string  $onlySubscriptionId  bill only this subscription, if due
      * @return array{billed: int, already_billed: int, skipped: int}
      */

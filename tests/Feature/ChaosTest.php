@@ -10,6 +10,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon as CarbonFacade;
+use Illuminate\Support\Collection;
 
 /**
  * 500 random events against 20 customers, asserting one invariant that must
@@ -51,7 +52,7 @@ test('customer balances stay consistent under 500 random events', function () {
 });
 
 /**
- * @param  \Illuminate\Support\Collection<int, Plan>  $plans
+ * @param  Collection<int, Plan>  $plans
  */
 function fireRandomEvent(Customer $customer, $plans, FakeGateway $gateway): void
 {
@@ -72,7 +73,7 @@ function fireRandomEvent(Customer $customer, $plans, FakeGateway $gateway): void
             'fail_payment' => runBillingAndRetriesWithOutcome($subscription, $gateway, shouldSucceed: false),
             'advance_clock' => CarbonFacade::setTestNow(CarbonFacade::now()->addDays(random_int(1, 10))),
         };
-    } catch (\Throwable) {
+    } catch (Throwable) {
         // A random sequence can legitimately hit an illegal state (e.g. a
         // plan change attempted on a cancelled subscription) -- the
         // invariant under test is the ledger, not that every random event
