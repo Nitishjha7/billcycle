@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "billcycle/billcycle",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Recurring subscription billing: proration, dunning, and an idempotent billing job.",
+    "keywords": ["laravel", "billing", "subscriptions"],
     "license": "MIT",
     "require": {
         "php": "^8.2",

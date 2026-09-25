@@ -1,7 +1,7 @@
 # UI Flow
 
 The five screens, what each one shows, and the seed data that makes them look
-real. The timed walkthrough is in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+real.
 
 Blade + Tailwind, server-rendered. No SPA — the point of this project is that it
 is a classic server-rendered business application, which is what Laravel is for.
@@ -12,12 +12,11 @@ is a classic server-rendered business application, which is what Laravel is for.
 
 Tailwind defaults. Tables, badges, cards. No animation, no custom design system.
 
-An interviewer is not judging the CSS. They are looking at **what is behind the
-screen**. The proration preview box can look plain — the numbers in it are the
-thing being demonstrated.
+The CSS isn't the point here — **what is behind the screen** is. The proration
+preview box can look plain; the numbers in it are what matter.
 
 Time saved on visual polish goes into the seed data instead, which is what
-actually decides whether the demo reads as real.
+actually decides whether the app reads as real.
 
 ---
 
@@ -168,9 +167,9 @@ The flow has two steps, and the first step is the whole point:
 ```
 
 **Why the preview matters more than the action.** Without it, the proration logic
-runs invisibly inside a POST and the interviewer sees a plan name change. With
-it, the arithmetic is on screen, and the natural next question is "how do you
-handle February?" — which is the conversation the project was built to have.
+runs invisibly inside a POST and all anyone sees is a plan name change. With it,
+the arithmetic is on screen — the credit, the charge, and the net — before
+anything is committed.
 
 The preview calls `ProrationCalculator` with the same inputs the apply path will
 use. Because the calculator is pure, preview and reality cannot disagree.
@@ -231,8 +230,7 @@ Small thing, but a blank region where data should be reads as unfinished.
 
 `php artisan db:seed --class=DemoSeeder`
 
-The seeder is the single most important piece of demo infrastructure in the
-project. It must produce:
+The seeder must produce:
 
 | Requirement | Why |
 |---|---|
@@ -245,8 +243,5 @@ project. It must produce:
 | **One customer who recovered** | Failed twice, then paid, back to active. Proves the reset path. |
 | **Sequential invoice numbers** | Gapless across the whole seeded history |
 
-A `--profile=messy` flag can raise the proportion of unhealthy accounts for
-demonstration purposes.
-
-**The seeder is not a fixture, it is the demo.** Time spent here shows up
-directly in how the project reads.
+`SEED_PROFILE=messy php artisan db:seed --class=DemoSeeder` raises the
+proportion of unhealthy accounts.

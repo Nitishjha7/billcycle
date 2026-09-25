@@ -1,8 +1,7 @@
 # Technical Specification
 
-Schema, algorithms and the decisions behind them. Build order is in
-[BUILD_PLAN.md](BUILD_PLAN.md); the tests that pin this behaviour are in
-[TEST_PLAN.md](TEST_PLAN.md).
+Schema, algorithms and the decisions behind them. Tests for this behaviour
+live in `tests/Unit` and `tests/Feature`.
 
 ---
 
@@ -207,7 +206,7 @@ make the February daily rate wrong by 7%.
 | **Downgrade mid-cycle** | Net negative, credit carried to next invoice, **no refund** | A refund is a gateway operation with its own failure modes; a credit is a line item. Documented as a deliberate limitation. |
 | **Change on cycle start day** | `remainingDays == totalDays`, full credit and full charge | Degenerates correctly; no special case needed |
 | **Change on cycle end day** | `remainingDays == 0`, both zero, net zero | Must not divide by zero or emit a Rs 0.00 line |
-| **Same-day second change** | Second change prorates from the *same* change date | Two changes in one day must not double-credit. **This is the known weak spot — see [INTERVIEW_NOTES.md](INTERVIEW_NOTES.md).** |
+| **Same-day second change** | Second change prorates from the *same* change date | Two changes in one day must not double-credit. **This is a known limitation** — a second change on the same day currently re-credits the full remaining period instead of accounting for the first change. |
 | **Change during trial** | No proration; plan swaps, trial end unchanged | Nothing has been paid, so there is nothing to prorate. **This is a caller-level rule, not calculator behaviour** — the calculator has no notion of trial state, so the subscription service must simply not call it while trialing. |
 | **Same plan to same plan** | Rejected before calculation | Not an error state, just a no-op the UI should not offer |
 
@@ -237,7 +236,7 @@ internally would not.
 3. Add the subscription line.
 4. Advance `current_period_start` / `current_period_end`.
 5. Commit.
-6. Dispatch a payment attempt job.
+6. Attempt the first payment.
 
 ### Why it cannot double-charge
 
@@ -318,9 +317,8 @@ payday. Widening covers both without a per-failure-code branch.
 > A customer is suspended for 6 days, then pays. Do they owe anything for those 6 days?
 
 **No.** Access was suspended, so the period is not billed. On reactivation the
-period restarts from the payment date. This is a **policy decision**, written
-down here because it is exactly the kind of thing an interviewer probes, and
-"I had not thought about it" is the wrong answer.
+period restarts from the payment date. This is a **policy decision**, worth
+writing down explicitly rather than leaving implicit in the code.
 
 ---
 
@@ -344,8 +342,7 @@ gateway a test can say "this card declines twice then succeeds" in one line. The
 interface is the seam a real gateway would slot into, and that seam existing is
 the part that matters.
 
-This is an explicit trade-off, not an omission, and it is stated in the README and
-in [INTERVIEW_NOTES.md](INTERVIEW_NOTES.md).
+This is an explicit trade-off, not an omission, and it is stated in the README.
 
 ---
 
@@ -382,5 +379,5 @@ foreach (range(1, 12) as $month) {
 }
 ```
 
-This is what makes the tests in [TEST_PLAN.md](TEST_PLAN.md) §1 possible at all. A
-system that reads the wall clock internally can only be tested by waiting.
+This is what makes the twelve-month billing test possible at all. A system
+that reads the wall clock internally can only be tested by waiting.

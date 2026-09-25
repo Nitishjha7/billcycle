@@ -6,11 +6,6 @@
 
 </div>
 
-> **Status: not built yet.** This repository currently contains the specification
-> and build plan only. Everything below describes what is *intended*, not what
-> exists. This README will be rewritten with real screenshots and real numbers
-> once the code lands — and it will not claim anything the code does not do.
-
 ---
 
 ## The problem
@@ -43,11 +38,11 @@ BillCycle is built around those three, and deliberately nothing else.
 |---|---|
 | **Backend** | Laravel 12, PHP 8.3 |
 | **Data** | PostgreSQL 16 — all money as integer paise |
-| **Async** | Queues + Horizon, Laravel Scheduler |
+| **Async** | Redis queues, Laravel Scheduler |
 | **Frontend** | Blade + Tailwind (server-rendered, no SPA) |
 | **Payments** | A fake gateway with controllable outcomes — no real Razorpay |
 | **Infra** | Docker Compose |
-| **Tests** | Pest, targeting ~70 |
+| **Tests** | Pest, 54 passing (1 documented `todo`) |
 
 ---
 
@@ -61,9 +56,9 @@ ProrationCalculator::calculate($oldPlan, $newPlan, $changeDate, $cycleStart, $cy
 ```
 
 No database, no clock, no side effects — inputs in, amounts out. That is what
-makes the ~30 edge-case tests around it cheap to write and fast to run: a
-28-day month, a same-day double change, an upgrade during trial, a downgrade
-that leaves credit behind.
+makes the 16 edge-case tests around it cheap to write and fast to run: a
+28-day month, a change on the cycle boundary, a free-to-paid plan swap, a
+downgrade that leaves credit behind.
 
 ### 2. Dunning is a state machine, not a cron with `if`s
 
@@ -104,16 +99,10 @@ it rounds is a documented decision, not an accident of the language.
 
 | Doc | What is in it |
 |---|---|
-| [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) | What has actually been built so far, phase by phase, in plain language |
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Schema, proration algorithm, dunning state machine, idempotency design |
-| [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) | Six phases, in build order, with what "done" means for each |
-| [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Every test to write, grouped, with the edge cases spelled out |
-| [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | The four-minute walkthrough, screen by screen |
 | [docs/UI_FLOW.md](docs/UI_FLOW.md) | The five screens, what each shows, and the seed data behind them |
-| [docs/INTERVIEW_NOTES.md](docs/INTERVIEW_NOTES.md) | Pitch, trade-offs, known limitations, anticipated questions |
 | [docs/SETUP.md](docs/SETUP.md) | Getting it running locally |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Railway + Neon, why those, and what to verify after |
-| [DECISIONS.md](DECISIONS.md) | A running log of every non-obvious decision, written as it is made |
 
 ---
 

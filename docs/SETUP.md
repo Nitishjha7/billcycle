@@ -1,8 +1,5 @@
 # Setup
 
-> Nothing is built yet. This is the intended setup, written ahead of the code so
-> Phase 1 has a target. It will be verified and corrected once the code exists.
-
 ---
 
 ## Requirements
@@ -30,13 +27,12 @@ docker compose exec app php artisan db:seed --class=DemoSeeder
 | | |
 |---|---|
 | App | http://localhost:8004 |
-| Horizon | http://localhost:8004/horizon |
 | Postgres | localhost:5436 |
 
 Demo login: `admin@billcycle.demo` / `password`
 
-Ports are offset from the other projects in the portfolio so several can run at
-once.
+Ports are offset from common defaults so this can run alongside other local
+projects at the same time.
 
 ---
 
@@ -99,5 +95,5 @@ gateway behaviour explicitly rather than relying on it.
 - There is **no real payment provider**. `PAYMENT_GATEWAY=fake` is the only
   supported value; the reason is in [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) §6.
 - The scheduler container must be running for `billing:run` to fire on its own.
-  For demos, run the command by hand — that is the point of the idempotency
-  moment in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+  Running it by hand is a good way to see the idempotency guarantee directly:
+  run it twice and the second run bills nothing.

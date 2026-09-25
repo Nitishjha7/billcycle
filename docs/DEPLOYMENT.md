@@ -1,9 +1,9 @@
 # Deployment — Railway + Neon
 
-Goal: **one public URL** in the README that an interviewer can click, log into,
-and use — without installing anything.
+Goal: **one public URL** that anyone can open, log into, and use without
+installing anything.
 
-> Nothing is deployed yet. This is written ahead of Phase 6 so the decisions are
+> Nothing is deployed yet. This is written ahead of time so the decisions are
 > made before the pressure of "just get it online". It will be corrected against
 > reality once the first deploy happens.
 
@@ -11,11 +11,11 @@ and use — without installing anything.
 
 ## What is left
 
-- [ ] Create the Neon database (Step 1)
-- [ ] Create the Railway project and connect the repo (Step 2)
-- [ ] Set environment variables (Step 3)
-- [ ] Run migrations and the seeder against production (Step 4)
-- [ ] Verify the five screens and the idempotency demo (Step 5)
+- [ ] Create the Neon database
+- [ ] Create the Railway project and connect the repo
+- [ ] Set environment variables
+- [ ] Run migrations and the seeder against production
+- [ ] Verify the five screens and that billing:run is idempotent
 - [ ] Put the live URL and demo login in the README
 
 ---
@@ -32,13 +32,12 @@ the deciding constraint.
 | Postgres | Add-on, or external | Free tier **expires after 90 days** | Paid |
 | Cost | ~$5/month credit covers this | Free | From $7 |
 
-**The sleeping is what rules out Render's free tier.** An interviewer clicking a
-link and waiting 40 seconds for a cold start has already formed an opinion. And a
-sleeping service means the scheduler does not fire, so the nightly billing job
-never runs — which is the one thing this project exists to demonstrate.
+**The sleeping is what rules out Render's free tier.** A 40-second cold start on
+first click is a bad first impression, and a sleeping service means the
+scheduler does not fire, so the nightly billing job never runs at all.
 
 **Database goes on Neon, not Railway.** Free Postgres on most platforms expires —
-Render's after 90 days — which would silently kill the portfolio link months after
+Render's after 90 days — which would silently kill the live link months after
 it was last looked at. Neon's free tier does not expire, and moving the database
 off the app platform means the app can be redeployed or moved without touching it.
 
@@ -152,8 +151,8 @@ seeded.
 railway run --service web php artisan migrate:fresh --seed --force
 ```
 
-Destroys everything and rebuilds. Fine here, and worth doing before an interview
-so the dates in the seeded history are recent rather than months stale.
+Destroys everything and rebuilds. Fine here, and worth doing periodically so
+the dates in the seeded history stay recent rather than going stale.
 
 > **Set a reminder to reseed.** Eight months of history seeded in September reads
 > as stale by March, and stale dates are exactly the detail that makes a demo look
@@ -163,21 +162,20 @@ so the dates in the seeded history are recent rather than months stale.
 
 ## Step 5 — Verify
 
-Not "the page loads". Verify the things the demo depends on:
+Not "the page loads". Verify the things that actually matter:
 
 - [ ] Dashboard shows seeded numbers — MRR non-round, some suspended
 - [ ] A plan change shows the **proration preview** with correct arithmetic
 - [ ] The dunning timeline renders on the past-due customer
 - [ ] Invoice PDF downloads
-- [ ] **`billing:run` twice produces one invoice** — the core demo, on production:
+- [ ] **`billing:run` twice produces one invoice**, on production:
 
 ```bash
 railway run --service web php artisan billing:run
 railway run --service web php artisan billing:run   # must report 0 generated
 ```
 
-- [ ] Worker logs show payment attempt jobs being processed
-- [ ] Scheduler logs show the daily tick
+- [ ] Scheduler logs show `billing:run` and `dunning:retry` firing on schedule
 
 ---
 
@@ -203,8 +201,7 @@ the right fix is a one-off release job — not a race.
 | Neon | Free tier, does not expire |
 
 If the credit runs out, the honest fallback is to take the link down rather than
-leave a dead URL in the README. **A broken demo link is worse than no link** — it
-reads as a project that was abandoned.
+leave a dead URL in the README. A broken link reads worse than no link.
 
 ---
 
@@ -231,8 +228,6 @@ and asset URLs point somewhere else.
 ## After deploying
 
 - [ ] Live URL + demo login at the top of the README
-- [ ] **Real screenshots** replacing the ASCII sketches in [UI_FLOW.md](UI_FLOW.md)
-- [ ] Remove the "not built yet" banner from the README
+- [ ] Real screenshots in the README, replacing the ASCII sketches in
+      [UI_FLOW.md](UI_FLOW.md)
 - [ ] README test counts taken from the actual run, not estimated
-- [ ] Add a `DECISIONS.md` entry for anything that surprised you here — deployment
-      surprises are good interview material precisely because they are specific
