@@ -6,7 +6,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 
-test('the dashboard loads for a logged-in user with open invoices', function () {
+test('the dashboard api loads for a logged-in user with open invoices', function () {
     $user = User::factory()->create();
 
     $customer = Customer::factory()->create();
@@ -20,12 +20,23 @@ test('the dashboard loads for a logged-in user with open invoices', function () 
         'status' => 'open',
     ]);
 
-    $response = $this->actingAs($user)->get('/');
+    $response = $this->actingAs($user)->getJson('/api/dashboard');
 
     $response->assertOk();
-    $response->assertSee('Dashboard');
+    $response->assertJsonStructure([
+        'mrr_paise',
+        'counts',
+        'activity',
+        'recent_customers',
+    ]);
 });
 
-test('a guest is redirected to login', function () {
-    $this->get('/')->assertRedirect('/login');
+test('a guest cannot reach the dashboard api', function () {
+    $this->getJson('/api/dashboard')->assertUnauthorized();
+});
+
+test('the SPA shell is served for any frontend route', function () {
+    $this->get('/')->assertOk();
+    $this->get('/customers')->assertOk();
+    $this->get('/customers/anything')->assertOk();
 });
