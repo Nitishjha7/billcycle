@@ -33,14 +33,34 @@ class DashboardController extends Controller
 
         $inDunning = Subscription::where('status', 'past_due')->count();
 
+        $pendingInvoices = Invoice::where('invoices.status', 'open');
+        $pendingInvoiceCount = (clone $pendingInvoices)->count();
+        $pendingInvoiceTotalPaise = (int) (clone $pendingInvoices)->sum('total_paise');
+        $pendingInvoiceCustomerCount = (clone $pendingInvoices)
+            ->join('subscriptions', 'subscriptions.id', '=', 'invoices.subscription_id')
+            ->distinct('subscriptions.customer_id')
+            ->count('subscriptions.customer_id');
+
+        $failedPaymentCount = Subscription::whereIn('status', ['past_due', 'suspended'])->count();
+
         $activity = $this->recentActivity();
+
+        $recentCustomers = Subscription::with(['customer', 'plan'])
+            ->latest('updated_at')
+            ->take(5)
+            ->get();
 
         return view('dashboard', [
             'mrrPaise' => (int) $mrrPaise,
             'counts' => $counts,
             'overdueInvoices' => $overdueInvoices,
             'inDunning' => $inDunning,
+            'pendingInvoiceCount' => $pendingInvoiceCount,
+            'pendingInvoiceTotalPaise' => $pendingInvoiceTotalPaise,
+            'pendingInvoiceCustomerCount' => $pendingInvoiceCustomerCount,
+            'failedPaymentCount' => $failedPaymentCount,
             'activity' => $activity,
+            'recentCustomers' => $recentCustomers,
         ]);
     }
 
@@ -59,6 +79,7 @@ class DashboardController extends Controller
             ->get()
             ->map(fn (Invoice $invoice) => [
                 'at' => $invoice->issued_at,
+                'type' => 'invoice',
                 'description' => "Invoice {$invoice->number} issued",
                 'detail' => $invoice->subscription->customer->name,
                 'amount_paise' => $invoice->total_paise,
@@ -71,6 +92,7 @@ class DashboardController extends Controller
             ->get()
             ->map(fn (PaymentAttempt $attempt) => [
                 'at' => $attempt->attempted_at,
+                'type' => 'failed_payment',
                 'description' => 'Payment failed - '.$attempt->invoice->subscription->customer->name,
                 'detail' => "attempt {$attempt->attempt_number}",
                 'amount_paise' => null,
@@ -82,6 +104,7 @@ class DashboardController extends Controller
             ->get()
             ->map(fn (PlanChange $change) => [
                 'at' => $change->changed_at,
+                'type' => 'plan_change',
                 'description' => 'Plan changed - '.$change->subscription->customer->name,
                 'detail' => null,
                 'amount_paise' => $change->net_paise,
@@ -94,6 +117,7 @@ class DashboardController extends Controller
             ->get()
             ->map(fn (Subscription $subscription) => [
                 'at' => $subscription->updated_at,
+                'type' => 'suspended',
                 'description' => 'Subscription suspended - '.$subscription->customer->name,
                 'detail' => $subscription->invoices()->withCount('attempts')->latest('issued_at')->first()?->attempts_count.' attempts',
                 'amount_paise' => null,

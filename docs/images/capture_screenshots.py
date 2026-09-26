@@ -47,6 +47,7 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport=VIEWPORT)
+        page.set_default_timeout(90000)
 
         login(page)
 
