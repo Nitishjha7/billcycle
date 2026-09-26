@@ -3,8 +3,9 @@
 The five screens, what each one shows, and the seed data that makes them look
 real.
 
-Blade + Tailwind, server-rendered. No SPA — the point of this project is that it
-is a classic server-rendered business application, which is what Laravel is for.
+A React SPA (Vite, React Router) talking to a Laravel JSON API over Sanctum's
+cookie-based session auth. Laravel serves the API and a single HTML shell;
+React owns routing and rendering from there.
 
 ---
 

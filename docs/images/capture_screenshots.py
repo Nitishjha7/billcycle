@@ -9,7 +9,7 @@ to localhost:8004 directly:
     docker run --rm --network host \
         -v "$(pwd)/docs/images:/out" \
         mcr.microsoft.com/playwright/python:v1.49.0-noble \
-        python /out/capture_screenshots.py
+        sh -c "pip install --quiet playwright==1.49.0 && python /out/capture_screenshots.py"
 """
 
 import pathlib
@@ -23,17 +23,19 @@ VIEWPORT = {"width": 1440, "height": 900}
 
 def login(page):
     page.goto(f"{BASE}/login")
+    page.wait_for_selector("#email")
     page.fill("#email", "admin@billcycle.demo")
     page.fill("#password", "password")
     page.click('button[type="submit"]')
-    page.wait_for_load_state("networkidle")
+    page.wait_for_url(f"{BASE}/", timeout=60000)
+    page.wait_for_selector("h1:has-text('Dashboard')", timeout=120000)
 
 
 def find_customer_id(page, status_label):
     """Find a customer row with the given status badge text and return its id
     from the row's link href."""
     page.goto(f"{BASE}/customers")
-    page.wait_for_load_state("networkidle")
+    page.wait_for_selector("table tbody tr")
     rows = page.locator("tbody tr")
     for i in range(rows.count()):
         row = rows.nth(i)
@@ -47,51 +49,58 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport=VIEWPORT)
-        page.set_default_timeout(90000)
+        page.set_default_timeout(120000)
+        page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
+        page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
+        page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} {req.failure}"))
+        page.on("response", lambda res: print(f"[response] {res.status} {res.url}") if "/api/" in res.url else None)
 
         login(page)
 
-        # 1. Dashboard
-        page.goto(f"{BASE}/")
-        page.wait_for_load_state("networkidle")
+        # 1. Dashboard -- already rendered by login(); no reload needed (a
+        # full reload here would re-run AuthContext's mount-time /api/user
+        # check, which is a separate concern from what this screen needs).
+        page.wait_for_timeout(500)
         page.screenshot(path=str(OUT / "dashboard.png"))
+        print("saved dashboard.png")
 
         # 2. Customer list
         page.goto(f"{BASE}/customers")
-        page.wait_for_load_state("networkidle")
+        page.wait_for_selector("table tbody tr")
         page.screenshot(path=str(OUT / "customers.png"))
 
         # 3. Customer detail with dunning timeline (a past-due customer)
         past_due_id = find_customer_id(page, "Past Due")
         if past_due_id:
             page.goto(f"{BASE}/customers/{past_due_id}")
-            page.wait_for_load_state("networkidle")
+            page.wait_for_selector("h1")
+            page.wait_for_timeout(500)
             page.screenshot(path=str(OUT / "dunning-timeline.png"))
 
         # 4. Plan change proration preview (an active customer)
         active_id = find_customer_id(page, "Active")
         if active_id:
             page.goto(f"{BASE}/customers/{active_id}/change-plan")
-            page.wait_for_load_state("networkidle")
+            page.wait_for_selector("#plan_id")
             select = page.locator("#plan_id")
             options = select.locator("option")
-            # pick the last non-disabled option (a different, usually higher, plan)
             for i in range(options.count() - 1, -1, -1):
                 opt = options.nth(i)
                 if not opt.is_disabled():
                     select.select_option(value=opt.get_attribute("value"))
                     break
-            page.wait_for_load_state("networkidle")
+            page.wait_for_selector("text=Charged today, text=Credit applied to next invoice")
+            page.wait_for_timeout(500)
             page.screenshot(path=str(OUT / "plan-change-preview.png"))
 
-            # 5. Invoice detail -- go back and open an invoice
+            # 5. Invoice detail
             page.goto(f"{BASE}/customers/{active_id}")
-            page.wait_for_load_state("networkidle")
-            invoice_link = page.locator('a[href*="/invoices/"]').first
-            if invoice_link.count() > 0:
-                invoice_link.click()
-                page.wait_for_load_state("networkidle")
-                page.screenshot(path=str(OUT / "invoice-detail.png"))
+            page.wait_for_selector("a[href*='/invoices/']")
+            invoice_link = page.locator("a[href*='/invoices/']").first
+            invoice_link.click()
+            page.wait_for_selector("h1")
+            page.wait_for_timeout(500)
+            page.screenshot(path=str(OUT / "invoice-detail.png"))
 
         browser.close()
         print("Screenshots saved to", OUT)
