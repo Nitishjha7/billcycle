@@ -7,6 +7,35 @@ installing anything.
 > made before the pressure of "just get it online". It will be corrected against
 > reality once the first deploy happens.
 
+## Locked plan (2026-09-27)
+
+Deploy order across the portfolio: **cadence → billcycle (this app) →
+webguard-scanpulse.** This app shares **one Railway project** with
+webguard-scanpulse — one ~$5/month credit bucket instead of two separate
+Railway billing relationships.
+
+**Why this app is on Railway and not Cloud Run:** this app needs a
+*standing* worker + scheduler process (`queue:work`, `schedule:work`)
+running continuously — Cloud Run only runs containers in response to
+requests, it has no standing-daemon mode. This app's billing/dunning job
+needs the worker and scheduler actually running all the time, which is
+what Railway gives for free as "just another service" (see "Why Railway,
+not Render or Heroku" below for the full comparison).
+
+**AWS was evaluated and rejected for this app.** A new AWS account (post
+July-2025 restructuring) gets a $100-200 credit expiring in 6 months, not
+an ongoing free tier, and the free-tier-eligible instance sizes (1GB RAM
+on EC2 t3.micro, 0.5GB on Lightsail's cheapest plan) are tight for this
+app's web+worker+scheduler+Redis stack. The AWS size that would run it
+reliably (2-4GB RAM) costs $10-16/month — 2-3x this Railway baseline —
+plus self-managed OS patches, Docker upkeep, and TLS renewal that Railway
+handles automatically.
+
+**Cost: ~$5/month Railway credit**, shared with webguard-scanpulse in the
+same project — see the Cost section below. If combined usage from both
+apps ever threatens to exceed the credit, take the less-critical link
+down rather than risk a surprise bill.
+
 ---
 
 ## What is left
