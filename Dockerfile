@@ -43,7 +43,8 @@ COPY docker/nginx/web.conf.template /etc/nginx/sites-enabled/web.conf.template
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY docker/nginx-start.sh /usr/local/bin/nginx-start.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/nginx-start.sh
 
 ENTRYPOINT ["entrypoint.sh"]
 CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
