@@ -86,7 +86,11 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => env('DB_URL'),
+            // Laravel's own convention is DB_URL; the deployment doc and
+            // Railway env vars were set up as DATABASE_URL (matching the
+            // other two deployed projects' convention instead), so accept
+            // either name rather than requiring a platform-specific rename.
+            'url' => env('DB_URL', env('DATABASE_URL')),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
