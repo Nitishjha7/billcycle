@@ -17,9 +17,11 @@ chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 # on every start, defaulting to 80 so docker-compose (which never sets
 # PORT) is unaffected.
 if [ -f /etc/nginx/sites-enabled/web.conf.template ]; then
-    PORT="${PORT:-80}" envsubst '${PORT}' \
+    export PORT="${PORT:-80}"
+    envsubst '${PORT}' \
         < /etc/nginx/sites-enabled/web.conf.template \
         > /etc/nginx/sites-enabled/default
+    echo "nginx will listen on port ${PORT}"
 fi
 
 exec "$@"
