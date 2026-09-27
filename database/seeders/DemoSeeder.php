@@ -53,7 +53,12 @@ class DemoSeeder extends Seeder
         $start = CarbonImmutable::parse('2026-01-15')->startOfDay();
         Carbon::setTestNow($start);
 
-        $customerCount = 50;
+        // Overridable for slow-network environments (e.g. a managed
+        // Postgres reached over the public internet, where each query is a
+        // round trip): SEED_CUSTOMER_COUNT=10 SEED_MONTHS=2 php artisan
+        // db:seed --class=DemoSeeder. Defaults match the original spec.
+        $customerCount = (int) env('SEED_CUSTOMER_COUNT', 50);
+        $months = (int) env('SEED_MONTHS', 8);
         $unhealthyShare = $messy ? 0.30 : 0.16;
 
         $customers = Customer::factory()->count($customerCount)->create();
@@ -94,9 +99,9 @@ class DemoSeeder extends Seeder
         // deepInDunning and recovered fail on month 6's invoice specifically
         // -- their own dedicated drive* methods walk the schedule from
         // there, independent of the general unhealthy pool.
-        $reservedFailMonth = 6;
+        $reservedFailMonth = min(6, $months);
 
-        foreach (range(1, 8) as $month) {
+        foreach (range(1, $months) as $month) {
             $preBillingMoment = $start->addMonths($month)->subDay();
             Carbon::setTestNow($preBillingMoment);
 
@@ -123,7 +128,7 @@ class DemoSeeder extends Seeder
                 $failingThisMonth = [...$failingThisMonth, $deepInDunning->id, $recovered->id];
             }
 
-            if ($month === 8) {
+            if ($month === $months) {
                 $failingThisMonth[] = $stuckInRetry->id;
             }
 
@@ -154,7 +159,7 @@ class DemoSeeder extends Seeder
             // state -- otherwise every unhealthy account resolves to either
             // suspended or active by the end, and past_due never appears in
             // the seeded data at all.
-            $isLastMonth = $month === 8;
+            $isLastMonth = $month === $months;
 
             foreach ($unhealthyThisMonth as $subscription) {
                 $this->partiallyRetry($subscription, walkToTerminal: ! $isLastMonth);
