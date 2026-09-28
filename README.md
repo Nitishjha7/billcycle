@@ -112,6 +112,27 @@ it rounds is a documented decision, not an accident of the language.
 
 ---
 
+## Deployment
+
+| | |
+|---|---|
+| **Hosting** | Railway — three services (`web`, `worker`, `scheduler`) from one Docker image, differing only in start command, deployed straight from GitHub |
+| **Database** | Neon (managed Postgres, free tier, never expires) — connected over its **non-pooled** connection string; the pooled one rejects the DDL transactions Laravel's migrations run |
+| **Queue/cache** | Railway's own Redis plugin |
+| **Scheduler** | The `scheduler` service runs `php artisan schedule:work` continuously — this is what fires `billing:run` and `dunning:retry` daily; without it the app looks fine but silently stops billing anyone |
+| **Cost** | ~$5/month Railway credit (not permanently free — this app needs three always-on processes, which no free tier offers) |
+
+Five real deployment bugs were hit and fixed getting this live — wrong
+Postgres env var name, Neon's pooled connection breaking migrations, nginx
+listening on the wrong port, a missing PHP Redis extension, and Laravel
+not trusting Railway's reverse proxy (which broke both asset URLs and
+login sessions). Full story, in the order they were found, in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#what-actually-happened).
+
+---
+
+---
+
 ## Deliberate non-goals
 
 Scope discipline is part of the design. These are **not** being built, and each

@@ -215,10 +215,18 @@ is built twice.
 ## Step 1 — Database (Neon)
 
 1. [neon.tech](https://neon.tech) → new project → region closest to you
-2. Copy the connection string. It must end with `?sslmode=require`
+2. Open the project → **Connect** (top of the sidebar) → **Connection
+   Details**
+3. **Turn "Connection pooling" off** before copying anything — see "What
+   actually happened" above (point 2): the pooled string is the default
+   shown, and it rejects the DDL transactions `migrate` runs. This has to
+   be the non-pooled string from the start, not fixed after a failed
+   migration.
+4. **Show password**, then **Copy snippet**. It must end with
+   `?sslmode=require` (Neon adds this automatically):
 
 ```
-postgresql://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/billcycle?sslmode=require
+postgresql://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
 ```
 
 Neon suspends compute when idle and wakes on the next query — a one-off delay of
@@ -228,17 +236,37 @@ about a second, invisible in a demo.
 
 ## Step 2 — Railway services
 
-New project → Deploy from GitHub repo. Then add two more services **from the same
-repo** and override the start command on each:
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from
+   GitHub repo** → select `billcycle`. This creates the first service
+   (named after the repo, `billcycle`) — it becomes `web` by default,
+   since the Dockerfile's own `CMD` runs supervisord (nginx + php-fpm).
+2. On the canvas, **"+ New" → "GitHub Repo" → `billcycle`** again — this
+   adds a second service **from the same repo**, defaulting to some
+   auto-generated name (e.g. "charismatic-education"). Rename it to
+   `worker` in its Settings, then in **Settings → Deploy → Custom Start
+   Command**, enter `php artisan queue:work --tries=3 --timeout=90` and
+   confirm with the checkmark next to the field — this doesn't take
+   effect until you also click through to that service's own **Deploy**
+   button afterward.
+3. Repeat step 2 once more for `scheduler`, with start command
+   `php artisan schedule:work`.
+4. **"+ New" → "Database" → "Add Redis"** — adds a fourth service, a
+   managed Redis plugin. No configuration needed; every other service in
+   the project can reference it as `${{Redis.REDIS_URL}}`.
+
+Note: the original plan was to put this app in the **same** Railway
+project as webguard-scanpulse, sharing one credit bucket. In practice,
+Railway's free-plan project-creation limit blocked adding a fourth
+service *or* a new project once this one already existed — webguard-scanpulse
+ended up in its own separate Railway project instead. See its own
+deployment doc for how that was resolved.
 
 | Service | Start command |
 |---|---|
-| `web` | (default — nginx + php-fpm) |
+| `web` (named `billcycle`) | (default — nginx + php-fpm via supervisord) |
 | `worker` | `php artisan queue:work --tries=3 --timeout=90` |
 | `scheduler` | `php artisan schedule:work` |
-
-Add the **Redis** plugin. Railway injects `REDIS_URL` into every service in the
-project.
+| `Redis` | Railway plugin, no start command |
 
 ### The scheduler is not optional
 
@@ -250,16 +278,17 @@ difference between a deployed app and a screenshot.
 
 ## Step 3 — Environment variables
 
-Set on **all three** services:
+Set on **all three** services (`web`/`billcycle`, `worker`, `scheduler` —
+identical values on each, one at a time via each service's Variables tab):
 
 ```env
-APP_KEY=base64:...          # php artisan key:generate --show
+APP_KEY=base64:...          # openssl rand -base64 32, prefixed "base64:"
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://billcycle.up.railway.app
+APP_URL=https://billcycle-production.up.railway.app
 
 DB_CONNECTION=pgsql
-DATABASE_URL=postgresql://...?sslmode=require
+DATABASE_URL=postgresql://...?sslmode=require   # the NON-POOLED string, Step 1
 
 QUEUE_CONNECTION=redis
 REDIS_URL=${{Redis.REDIS_URL}}
@@ -270,6 +299,14 @@ FAKE_GATEWAY_FAILURE_RATE=0
 LOG_CHANNEL=stderr
 SESSION_DRIVER=redis
 CACHE_STORE=redis
+
+# Added after the fact -- see "What actually happened", point 5. Not
+# obvious from a local-only Docker Compose setup, where the frontend and
+# API sharing one origin means none of this comes up.
+SANCTUM_STATEFUL_DOMAINS=billcycle-production.up.railway.app
+SESSION_SECURE_COOKIE=true
+SESSION_SAME_SITE=lax
+SESSION_DOMAIN=null
 ```
 
 **`APP_DEBUG=false` matters.** Laravel's debug page prints environment variables
@@ -279,9 +316,27 @@ a credential leak.
 **`LOG_CHANNEL=stderr`**, not `stack`. Containers have no persistent disk; file
 logs vanish on redeploy and fill the container in the meantime.
 
+**`APP_URL` can only be filled in accurately after Step 2's `web` service has a
+domain.** Settings → Networking → **Generate Domain** on the `web`/`billcycle`
+service produces the `*.up.railway.app` URL — copy it into `APP_URL` (and the
+three Sanctum/session vars above) only once it exists, same ordering problem as
+cadence's `ALLOWED_HOSTS` on Cloud Run.
+
+**Also in that same Networking panel: check the auto-detected Port.**
+Railway guessed **9000** here (php-fpm's port, picked up from
+`supervisord.conf` listing php-fpm before nginx) instead of the **8080**
+nginx actually listens on (see "What actually happened", point 4) — wrong
+until you notice nginx, not php-fpm, is what's supposed to receive
+traffic. Set it to 8080 by hand.
+
 ---
 
 ## Step 4 — Migrate and seed
+
+Done via Railway's in-browser **Console** tab on the `web`/`billcycle`
+service (an SSH-in-browser shell into the running container) rather than
+the `railway` CLI shown below — no local CLI install needed. The
+equivalent CLI commands:
 
 ```bash
 railway run --service web php artisan migrate --force
@@ -292,33 +347,57 @@ railway run --service web php artisan db:seed --class=DemoSeeder --force
 guard exists for good reason — here it is a demo database being deliberately
 seeded.
 
+**What was actually run, in order:**
+
+```bash
+php artisan migrate --force
+# first attempt failed here -- SQLSTATE[25P02], the pooled-connection
+# issue (Step 1). Switched DATABASE_URL to the non-pooled string, then:
+php artisan migrate:fresh --force
+# succeeded
+
+# Full-default seeding (50 customers, 8 months) was killed after 30+
+# minutes without finishing -- too slow over Neon's network latency from
+# Railway. Re-ran at a much smaller scale instead:
+SEED_CUSTOMER_COUNT=10 SEED_MONTHS=2 php artisan db:seed --class=DemoSeeder --force
+# completed in under 2 minutes
+```
+
+`SEED_CUSTOMER_COUNT` and `SEED_MONTHS` are env vars `DemoSeeder` reads
+(added specifically for this deploy — see "What actually happened", point
+3); they default to the original 50/8 spec, so local development and CI
+are unaffected. Only pass them inline on the seed command itself, not as
+persistent Railway service variables — they're a one-off scale knob, not
+part of the app's real configuration.
+
 ### Reseeding later
 
 ```bash
-railway run --service web php artisan migrate:fresh --seed --force
+php artisan migrate:fresh --force
+SEED_CUSTOMER_COUNT=10 SEED_MONTHS=2 php artisan db:seed --class=DemoSeeder --force
 ```
 
-Destroys everything and rebuilds. Fine here, and worth doing periodically so
-the dates in the seeded history stay recent rather than going stale.
+Destroys everything and rebuilds, at the same reduced scale that
+actually finishes in reasonable time against Neon from Railway.
 
-> **Set a reminder to reseed.** Eight months of history seeded in September reads
-> as stale by March, and stale dates are exactly the detail that makes a demo look
-> abandoned.
+> **Set a reminder to reseed.** Even two months of history seeded from
+> "day 1" reads as stale within a few weeks of the real date drifting past
+> it — the demo's `billing:run` walkthrough (Step 5) depends on the
+> seeded subscriptions not already being wildly overdue, which gets worse
+> the longer the seed data sits untouched. Reseeding also resets
+> `billing:run`'s catch-up count back to a small, demo-friendly number of
+> calls rather than an ever-growing one.
 
 ---
 
 ## Step 5 — Verify
 
-Not "the page loads". Verify the things that actually matter:
+Not "the page loads". Verify the things that actually matter.
 
 - [x] Login works (`admin@billcycle.demo` / `password`) and the dashboard
       loads
 - [x] Customers list renders with seeded data
-- [x] **`billing:run` is idempotent** — verified on production, though it
-      took 6 calls to catch the seeded subscriptions' billing periods up
-      to the real current date before a 7th call correctly reported "0
-      generated" (see "What actually happened" above for why 3-then-3
-      wasn't actually a duplicate-invoicing bug)
+- [x] **`billing:run` is idempotent** — see the exact test sequence below
 - [ ] A plan change shows the **proration preview** with correct arithmetic
 - [ ] The dunning timeline renders on the past-due customer
 - [ ] Invoice PDF downloads
@@ -326,6 +405,56 @@ Not "the page loads". Verify the things that actually matter:
 
 The unchecked items are the deeper walkthrough, not "does it boot" —
 worth going through once before relying on this link in an interview.
+
+### How `billing:run` idempotency was actually verified
+
+The naive test — run it, run it again, expect the second run to report 0
+— *failed* the first time, and looked like a duplicate-invoicing bug:
+both calls reported `Generated 3 invoice(s)`. It wasn't a bug. Here's the
+full sequence that established what was actually going on, useful as a
+template for re-verifying after any reseed:
+
+```bash
+# 1. How many invoices exist right now (baseline)?
+php artisan tinker --execute="echo App\Models\Invoice::count();"
+
+# 2. Run it once
+php artisan billing:run
+# → Generated 3 invoice(s). 0 already billed this cycle. 0 skipped.
+
+# 3. Run it again immediately
+php artisan billing:run
+# → Generated 3 invoice(s). 0 already billed this cycle. 0 skipped.
+#   (looks like duplicate billing -- it isn't, see step 4)
+
+# 4. Check whether the *same* subscriptions are still "due" --
+#    if this is 0, something else is wrong (a real bug); if it's > 0,
+#    the seeded data is just further behind the real date than expected
+php artisan tinker --execute="echo App\Models\Subscription::whereIn('status',['active','past_due'])->where('current_period_end','<=',now())->count();"
+# → 3  (still due -- confirms this is catch-up billing, not a duplicate)
+
+# 5. Inspect one subscription's period directly, to see it actually
+#    advancing across calls rather than staying frozen
+php artisan tinker --execute="echo App\Models\Subscription::whereIn('status',['active','past_due'])->first()->current_period_end;"
+# → advanced by one billing interval each time billing:run was called
+
+# 6. Keep calling billing:run until the due count from step 4 reaches 0
+#    (took 6 total calls here, since the seeded history was ~6 months
+#    behind the real deploy date -- billing:run only advances one period
+#    per subscription per call, by design)
+php artisan billing:run   # × N, until "Generated 0 invoice(s)."
+
+# 7. THE actual idempotency test: call it one more time once step 6
+#    reaches 0 generated. This must also report 0.
+php artisan billing:run
+# → Generated 0 invoice(s). 0 already billed this cycle. 0 skipped.
+```
+
+The lesson for next time: **check the due count (step 4) before
+concluding "generated > 0 twice" is a bug.** `billing:run`'s unique
+constraint (`invoices.subscription_id` + `period_start`) makes genuine
+double-billing structurally impossible — repeated non-zero results mean
+the seeded data is behind the clock, not that the guarantee failed.
 
 ---
 
