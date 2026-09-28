@@ -6,6 +6,12 @@
 
 </div>
 
+<p align="center">
+  <strong>Live:</strong>
+  <a href="https://billcycle-production.up.railway.app">billcycle-production.up.railway.app</a>
+  · Demo login: <code>admin@billcycle.demo</code> / <code>password</code>
+</p>
+
 ---
 
 ## The problem
